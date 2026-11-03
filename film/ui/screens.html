@@ -1,0 +1,303 @@
+<!doctype html>
+<!-- 第一章各工位屏幕的界面（贴到 3D 平板上）。screens.html?s=<页面名>，renderAt(t) 画出 t 秒（全片时间）时的样子。
+     界面照真实系统重画（截图在 制作_一个人的AI团队/参考界面/）；内网地址、用户名不上屏。 -->
+<html><head><meta charset="utf-8">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;overflow:hidden;font-family:"PingFang SC","Noto Sans SC",sans-serif;color:#e9e9ef;background:#15161c}
+  .mono{font-family:"JetBrains Mono","SF Mono",Menlo,monospace}
+  .hd{height:120px;display:flex;align-items:center;padding:0 48px;border-bottom:2px solid #2a2b35;background:#1c1d25;font-size:40px;font-weight:600;gap:18px}
+  .hd small{font-size:28px;color:#8b8d9c;font-weight:400}
+  .dot{width:22px;height:22px;border-radius:50%;display:inline-block}
+  .chip{display:inline-block;padding:4px 16px;border-radius:10px;font-size:26px;font-weight:700}
+  .cl{background:var(--cl);color:#fff}.cx{background:#f2f2f4;color:#111}.gk{background:#111;color:#fff;border:2px solid #fff}
+  .pop{transform-origin:0 50%}
+</style></head><body>
+<div id="root"></div>
+<script>
+const S = new URLSearchParams(location.search).get('s');
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ease = u => 1 - Math.pow(1 - clamp(u), 3);
+const pop = u => { u = clamp(u); return u >= 1 ? 1 : 1 - Math.pow(1 - u, 3) * Math.cos(u * 7.5); };
+const typed = (txt, t, t0, t1) => txt.slice(0, Math.round(txt.length * clamp((t - t0) / (t1 - t0))));
+const caret = t => (Math.floor(t * 2.2) % 2 ? '' : '<span style="opacity:.9">▍</span>');
+const R = document.getElementById('root');
+const P = {};   // 每个页面：size + render(t)
+
+// ---------- 格子：位置来自 timeline.py 的 UI_CELLS；有人落在格子上，格子弹起 + 发光（LANDS）----------
+const CELL = (pg, k) => window.TL.UI_CELLS[pg][k];
+function hit(id, t) {         // 最近一次落在这个格子上，过去了多久 → 0..1 的弹起量
+  let v = 0;
+  for (const [tl, c] of window.TL.LANDS) if (c === id && t >= tl && t - tl < .5) v = Math.max(v, 1 - (t - tl) / .5);
+  return v;
+}
+function cellBox(pg, k, t, inner, base = '', glow = '#ff8a65') {
+  const [cx, cy, w, h] = CELL(pg, k), v = hit(pg + ':' + k, t), s_ = 1 + .12 * Math.sin(v * Math.PI) ;
+  return `<div style="position:absolute;left:${cx - w / 2}px;top:${cy - h / 2}px;width:${w}px;height:${h}px;box-sizing:border-box;border-radius:24px;
+    transform:scale(${s_});${base};${v > 0 ? `box-shadow:0 0 0 ${6 * v}px ${glow},0 0 ${60 * v}px ${glow}` : ''}">${inner}</div>`;
+}
+const OWN = { Grok: 'gk', Claude: 'cl', Codex: 'cx' };
+
+// ---------- Mac 主控：Claude Code 对话（横版）----------
+const ITEMS = [['查资料、找参考', 'Grok'], ['写脚本和分镜', 'Claude'], ['写代码出片', 'Claude'], ['交叉审查', 'Codex'], ['封面出图', 'Codex']];
+P.mac = { w: 1600, h: 1000, render(t, C) {
+  const ask = '做一条宣传片，讲我们仨怎么干活', sent = t >= C.send;
+  let h = `<div class="hd"><span class="dot" style="background:var(--cl)"></span>Mac 主控<small>Claude Code</small></div>`;
+  if (sent) {
+    const k = ease((t - C.send) / .3);
+    h += `<div style="position:absolute;right:60px;top:${150 + (1 - k) * 700}px;padding:24px 38px;border-radius:40px 40px 12px 40px;background:#3b6cf6;font-size:42px;color:#fff">${ask}</div>`;
+    if (t > C.items[0] - .45) h += `<div style="position:absolute;left:70px;top:330px;font-size:40px;opacity:${ease((t - C.items[0] + .45) / .25)}"><span class="chip cl">Claude</span>&nbsp; 好，拆成 5 件事：</div>`;
+  }
+  ITEMS.forEach(([txt, who], i) => {
+    if (t < C.items[i]) return;
+    const o = t >= C.owners[i], k = pop((t - C.items[i]) / .3);
+    h += `<div style="transform:scale(${k});transform-origin:50% 50%">` + cellBox('mac', 'item' + i, t,
+      `<div style="padding:26px 28px"><div style="font-size:34px;color:#8b8d9c">${'①②③④⑤'[i]}</div><div style="font-size:44px;font-weight:700;margin-top:14px;line-height:1.25">${txt}</div>
+       ${o ? `<span class="chip ${OWN[who]}" style="position:absolute;left:28px;bottom:24px;font-size:30px;transform:scale(${pop((t - C.owners[i]) / .3)})">→ ${who}</span>` : ''}</div>`,
+      `background:#22242e;border:3px solid ${o ? '#3a3d4c' : '#2a2c36'}`) + '</div>';
+  });
+  const box = sent ? '' : typed(ask, t, C.typing[0], C.typing[1]);
+  const [ix, iy, iw, ih] = CELL('mac', 'input');
+  h += `<div style="position:absolute;left:${ix - iw / 2}px;top:${iy - ih / 2}px;width:${iw}px;height:${ih}px;border-radius:55px;background:#22242e;font-size:40px;display:flex;align-items:center;padding:0 50px;box-sizing:border-box;color:${box ? '#fff' : '#5d6070'}">${box || (sent ? '' : '发消息…')}${!sent && t > C.typing[0] - .3 ? caret(t) : ''}</div>`;
+  return h;
+}};
+
+// ---------- 知识书房（照真实界面重画：米色底、深绿按钮；横版 1600×1000）----------
+P.kb = { w: 1600, h: 1000, render(t, C) {
+  const q = '.claude 文件夹怎么配', box = typed(q, t, C.kb_typing[0], C.kb_typing[1]);
+  const hit_ = t >= C.kb_search, [bx, by, bw, bh] = CELL('kb', 'search'), v = hit('kb:search', t);
+  let h = `<div style="position:absolute;inset:0;background:#fbfaf5;color:#25332b">
+    <div style="height:130px;display:flex;align-items:center;gap:28px;padding:0 60px;border-bottom:2px solid #e7e5da">
+      <div style="width:80px;height:80px;border-radius:18px;border:3px solid #2f5d46;display:flex;align-items:center;justify-content:center;font-size:46px;color:#2f5d46">册</div>
+      <div><div style="font-size:22px;letter-spacing:5px;color:#7a8a80">LULUYOUWEI · KNOWLEDGE</div><div style="font-size:46px;font-weight:700;letter-spacing:3px">路路有为 · 知识书房</div></div></div>
+    <div style="padding:34px 60px 0;font-size:56px;font-weight:600;font-family:'Songti SC',serif">让知识，随时可用。</div>
+    <div style="position:absolute;left:60px;width:${bx - bw / 2 - 80}px;top:${by - 55}px;height:110px;border:3px solid ${box ? '#2f5d46' : '#d9d6c8'};border-radius:22px;background:#fff;display:flex;align-items:center;padding:0 40px;font-size:42px;box-sizing:border-box">
+      <span style="color:${box ? '#25332b' : '#a2a69c'}">${box || '搜索标题、正文或转写内容…'}</span>${t > C.kb_typing[0] - .2 && !hit_ ? caret(t) : ''}</div>
+    <div style="position:absolute;left:${bx - bw / 2}px;top:${by - bh / 2}px;width:${bw}px;height:${bh}px;border-radius:18px;background:${v > 0 ? '#1d3f2e' : '#2f5d46'};color:#fff;font-size:42px;display:flex;align-items:center;justify-content:center;transform:scale(${1 - .1 * Math.sin(v * Math.PI)})">搜索</div>`;
+  if (hit_) {
+    const res = [['res0', '.claude/ 文件夹剖析', '讲 .claude 目录里手册、命令、技能、代理和权限怎么配'],
+                 ['res1', '龙虾装了几百 Skill 搜不到还冲突？', 'Claude Code 官方新版 Skill Creator 一键优化']];
+    res.forEach(([k, ti, d], i) => {
+      const u = ease((t - C.kb_search - i * .12) / .3);
+      h += `<div style="opacity:${u}">` + cellBox('kb', k, t, `<div style="padding:34px 40px">
+        <div style="display:flex;justify-content:space-between;font-size:26px;color:#6b776f"><span style="background:#e3efe6;color:#2f5d46;padding:6px 16px;border-radius:8px">判断卡</span>必看 · 仍可用（2026）· 价值高</div>
+        <div style="font-size:44px;font-weight:700;margin-top:28px;line-height:1.3">${ti}</div><div style="font-size:32px;color:#4b5a51;margin-top:22px;line-height:1.5">${d}</div></div>`,
+        `background:#fff;border:2px solid #e7e5da;${i === 0 && t > C.kb_card ? 'outline:6px solid #ff8a65' : ''}`) + '</div>';
+    });
+  }
+  return h + '</div>';
+}};
+
+// ---------- 第 3 步：Claude 的代码屏。4 个文件标签 = 格子，踩一个打开一个；代码是截图时读入的真实源文件 ----------
+const TABS = ['timeline.py', 'scene.py', 'score.py', 'screens.html'];
+const TASKS = ['查平台规格', '写配乐', '检查安全区'];
+P.code = { w: 1600, h: 1000, render(t, C) {
+  let k = -1; C.tabs.forEach((tt, i) => { if (t >= tt) k = i; });
+  let h = `<div class="hd"><span class="chip cl">Claude</span>写代码<small>Claude Code</small></div>`;
+  TABS.forEach((n, i) => {
+    h += cellBox('code', 'tab' + i, t, `<div class="mono" style="height:100%;display:flex;align-items:center;justify-content:center;font-size:30px;color:${i === k ? '#fff' : '#7d8496'}">${n}</div>`,
+      `border-radius:16px 16px 0 0;background:${i === k ? '#2a2c36' : '#1b1c23'};border-bottom:4px solid ${i === k ? 'var(--cl)' : 'transparent'}`);
+  });
+  if (k >= 0) {
+    const src = (window.SRC[TABS[k]] || '').split('\n').slice(0, 17).join('\n');
+    const txt = typed(src, t, C.tabs[k], C.tabs[k] + .42);
+    h += `<pre class="mono" style="position:absolute;left:40px;top:205px;width:1020px;margin:0;font-size:24px;line-height:1.6;color:#c9d1e0;white-space:pre;overflow:hidden">${
+      txt.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/(#.*|\/\/.*)$/gm, m => `<span style="color:#7d8496">${m}</span>`)}</pre>`;
+  }
+  h += `<div style="position:absolute;left:1100px;top:205px;font-size:32px;color:#9a9db0">子代理</div>`;
+  TASKS.forEach((n, i) => {
+    const on = t >= C.split, t1 = C.subs[1] - .25 + .12 * i, u = clamp((t - C.subs[0] - .1 * i) / (t1 - C.subs[0] - .1 * i)), done = t >= t1;
+    h += cellBox('code', 'task' + i, t, `<div style="padding:22px 28px;font-size:36px;font-weight:700">${n}${done ? ' <span style="color:#4ade80">✓</span>' : ''}
+      <div style="margin-top:18px;height:14px;border-radius:7px;background:#2a2b35"><div style="height:100%;width:${u * 100}%;border-radius:7px;background:${done ? '#22c55e' : 'var(--cl)'}"></div></div></div>`,
+      `background:${on ? '#221714' : '#17181e'};border:3px solid ${done ? '#22c55e' : on ? 'var(--cl)' : '#2a2b35'};opacity:${on ? 1 : .5}`);
+  });
+  return h;
+}};
+const SUBT = ['查平台规格', '写配乐', '检查安全区'];
+for (let i = 0; i < 3; i++) P['sub' + i] = { w: 600, h: 400, render(t, C) {
+  const t0 = C.subs[0] + .1 * i, t1 = C.subs[1] - .25 + .12 * i, u = clamp((t - t0) / (t1 - t0)), done = t >= t1;
+  const act = t >= C.split;
+  return `<div style="position:absolute;inset:0;background:${done ? '#13261b' : act ? '#221714' : '#17181e'};border:6px solid ${done ? '#22c55e' : act ? 'var(--cl)' : '#2a2b35'};border-radius:30px;padding:34px 40px">
+    <div style="font-size:30px;color:#9a9db0">子代理 ${i + 1}</div>
+    <div style="font-size:54px;font-weight:700;margin-top:10px">${SUBT[i]}</div>
+    <div style="position:absolute;left:40px;right:40px;bottom:44px;height:22px;border-radius:11px;background:#2a2b35;overflow:hidden">
+      <div style="height:100%;width:${u * 100}%;background:${done ? '#22c55e' : 'var(--cl)'}"></div></div>
+    ${done ? `<div style="position:absolute;right:40px;top:30px;font-size:60px;color:#4ade80;transform:scale(${pop((t - t1) / .3)})">✓</div>` : ''}</div>`;
+}};
+
+
+// ---------- 第 4 步：Codex 审稿（示意：把发布文案过一遍），5 条 = 5 个格子，Codex 一格一格踩 ----------
+const REV = [
+  ['标题', '我一个人，开了一家 AI 工作室', null, '14 字，≤ 20'],
+  ['数字', '知识库 5.8 万份资料', '数字过时', '改为 71,037 份'],
+  ['出处', 'Grok 判断卡 7,253 张', null, '有出处'],
+  ['字幕', '全部在安全区', null, '已核对'],
+  ['结尾', '评论区扣「团队」领提示词', '承诺要兑现', '已确认能发'],
+];
+P.review = { w: 1600, h: 1000, render(t, C) {
+  let h = `<div class="hd"><span class="chip cx">Codex</span>交叉审查<small class="mono">发布文案.txt</small></div>`;
+  const arrived = t >= C.doc[1], fixed = t >= C.stamp;
+  REV.forEach(([tag, line, bad, note], i) => {
+    const seen = t >= C.checks[i], col = !arrived || !seen ? '#3a3c48' : bad && !fixed ? '#ef4444' : '#22c55e';
+    const body = !arrived ? `<div style="padding:30px 26px"><div style="height:30px;width:60%;border-radius:10px;background:#2a2c36"></div><div style="height:24px;width:85%;margin-top:26px;border-radius:10px;background:#24262f"></div><div style="height:24px;width:70%;margin-top:16px;border-radius:10px;background:#24262f"></div></div>`
+      : `<div style="padding:26px 26px"><div style="font-size:30px;color:#8b8d9c">${tag}</div>
+         <div style="font-size:34px;line-height:1.35;margin-top:14px;min-height:140px">${bad && fixed && i === 1 ? '知识库 <s style="color:#8b8d9c">5.8 万</s> 71,037 份' : line}</div>
+         <div style="font-size:30px;color:${col};font-weight:700">${!seen ? '' : bad && !fixed ? '✗ ' + bad : '✓ ' + note}</div></div>`;
+    h += cellBox('review', 'c' + i, t, body, `background:#202128;border-top:10px solid ${col}`, bad && !fixed ? '#ef4444' : '#22c55e');
+  });
+  if (!arrived) h += `<div style="position:absolute;left:0;right:0;top:820px;text-align:center;font-size:38px;color:#7d8496">等 Claude 的文件 ${'●'.repeat(1 + Math.floor(t * 3) % 3)}</div>`;
+  if (fixed) h += `<div style="position:absolute;left:640px;top:790px;padding:6px 40px;border:10px solid #22c55e;border-radius:24px;color:#22c55e;font-size:84px;font-weight:800;transform:rotate(-8deg) scale(${1 + (1 - ease((t - C.stamp) / .15)) * 1.2})">通过</div>`;
+  return h;
+}};
+// ---------- 调度台（照 Prefect 界面重画；流程名、定时都是真实的）----------
+const RUNS = [['collector-intake', 'X3D', '每 3 小时'], ['kb-fulltext-refresh', '9700K', '每天 07:15'], ['waytoagi-daily', 'X3D', '每天 13:20'],
+              ['collector-backup', 'X3D', '每天 05:00'], ['skills-nightly', 'X3D', '每天 04:10'], ['kb-inbox-fullview', 'X3D', '每天 21:30'], ['feishu-organize', 'X3D', '每 3 小时']];
+P.queue = { w: 1200, h: 1640, render(t, C) {
+  let h = `<div class="hd" style="background:#18181b"><span style="font-size:46px">◆</span>调度台<small>9700K · Prefect</small></div>`;
+  RUNS.forEach(([f, pool, cron], i) => {
+    let st = ['Scheduled', '#3d4250', '#c7cad6'], bar = '';
+    if (i === 0 && t >= C.run) {
+      const u = clamp((t - C.run) / (C.surf[1] - C.run));
+      st = u < 1 ? ['Running', '#2563eb', '#fff'] : ['Completed', '#16a34a', '#fff'];
+      bar = `<div style="position:absolute;left:0;bottom:0;height:10px;width:${u * 100}%;background:#60a5fa;box-shadow:0 0 18px #60a5fa"></div>`;
+    } else if (i > 2) st = ['Completed', '#16a34a', '#fff'];
+    h += `<div style="position:relative;margin:${i ? 22 : 40}px 40px 0;height:170px;border-radius:18px;background:#202127;border-left:12px solid ${st[1]};padding:24px 34px;overflow:hidden">
+      <div class="mono" style="font-size:40px;font-weight:700">${f}</div>
+      <div style="margin-top:16px;font-size:30px;color:#9a9db0;display:flex;gap:26px;align-items:center">
+        <span class="chip" style="background:${st[1]};color:${st[2]};font-size:26px">${st[0]}</span><span>${cron}</span><span>工作池 · ${pool}</span></div>${bar}</div>`;
+  });
+  return h;
+}};
+// 从知识书房里立起来的那张判断卡（真实内容，出处：WaytoAGI「.claude/文件夹剖析」判断卡）
+P.kbcard = { w: 900, h: 1200, render() {
+  return `<div style="position:absolute;inset:0;background:#fffdf7;color:#25332b;padding:60px 64px;border-radius:40px;border:6px solid #ff8a65">
+    <div style="display:flex;gap:16px;font-size:30px"><span style="background:#e3efe6;color:#2f5d46;padding:8px 20px;border-radius:10px">判断卡</span><span style="background:#ff8a65;color:#1a1010;padding:8px 20px;border-radius:10px;font-weight:700">必看</span></div>
+    <div style="font-size:66px;font-weight:800;margin-top:40px">.claude/ 文件夹剖析</div>
+    <div style="font-size:34px;color:#6b776f;margin-top:16px">仍可用（2026）· 价值高 · 工作室系统</div>
+    <div style="font-size:38px;line-height:1.6;margin-top:46px"><b>是什么</b>　讲 .claude 目录里手册、命令、技能、代理和权限怎么配</div>
+    <div style="font-size:38px;line-height:1.6;margin-top:30px"><b>有什么用</b>　手册压到两百行，个人偏好不进仓库，权限写允许和禁止</div>
+    <div style="font-size:38px;line-height:1.6;margin-top:30px;color:#b4532a"><b>本周动作</b>　选一个在做的仓库，精简手册并补上权限</div></div>`;
+}};
+
+
+// ---------- 群聊（转场）：我问"这条片子怎么做的"，Claude 扎进去，屏幕开洞 ----------
+P.chat2 = { w: 1600, h: 1000, render(t, C) {
+  const q = '这条片子，你们怎么做的？', a1 = C.ask[1];
+  let h = `<div class="hd" style="justify-content:center"><b style="font-size:44px">我的 AI 团队（3）</b><small>Claude · Codex · Grok</small></div>`;
+  if (t >= a1) h += `<div style="position:absolute;right:70px;top:150px;padding:26px 40px;border-radius:44px 44px 12px 44px;background:#3b6cf6;font-size:44px;color:#fff;transform:scale(${pop((t - a1) / .3)});transform-origin:100% 100%">${q}</div>`;
+  h += `<div style="position:absolute;left:40px;right:40px;bottom:36px;height:96px;border-radius:48px;background:#22242e;font-size:40px;display:flex;align-items:center;padding-left:50px;color:#fff">${t < a1 ? typed(q, t, C.ask[0], a1 - .1) + caret(t) : ''}</div>`;
+  const [dx, dy] = CELL('chat2', 'dive'), u = (t - C.dive[0]) / (C.dive[1] - C.dive[0]);
+  if (u > 0) { const r = 40 + 1100 * Math.pow(clamp(u), 1.6);   // Claude 扎进去的地方开一个洞
+    h += `<div style="position:absolute;left:${dx - r}px;top:${dy - r}px;width:${2 * r}px;height:${2 * r}px;border-radius:50%;background:radial-gradient(#000 60%,#0b0c10 75%,rgba(159,212,255,.9) 78%,rgba(0,0,0,0) 82%)"></div>`; }
+  return h;
+}};
+
+// ---------- 第 4 步：封面图"显影"（从噪点到 Codex 真实生成过的那张图）----------
+P.gen = { w: 900, h: 1200, render(t, C) {
+  const u = clamp((t - C.gen[0] - .3) / (C.gen[1] - C.gen[0] - .3)), n = Math.round(u * 100);
+  // 噪点层：用帧号做种子，确定性
+  let seed = Math.floor(t * 30) * 9301 + 49297; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  const c = document.createElement('canvas'); c.width = 180; c.height = 240; const g = c.getContext('2d'), im = g.createImageData(180, 240);
+  for (let i = 0; i < im.data.length; i += 4) { const v = rnd() * 255; im.data[i] = v; im.data[i + 1] = v * .9; im.data[i + 2] = v * 1.1; im.data[i + 3] = 255; }
+  g.putImageData(im, 0, 0);
+  return `<div style="position:absolute;inset:0;background:#000;overflow:hidden">
+    <img src="../../tesla90/cover_hero.png" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 20%;filter:blur(${(1 - u) * 26}px) saturate(${.4 + .6 * u})">
+    <img src="${c.toDataURL()}" style="position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;opacity:${Math.pow(1 - u, 1.4)}">
+    <div style="position:absolute;left:30px;right:30px;bottom:30px;padding:18px 26px;border-radius:16px;background:rgba(0,0,0,.65);font-size:34px;display:flex;justify-content:space-between">
+      <span>${u < 1 ? 'Codex 生成中…' : '封面底图 · Codex 生成'}</span><span class="mono">${n}%</span></div></div>`;
+}};
+
+// ================= 第二章 · 这条片子怎么做的（时间读 TL.CH2）=================
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const noCmt = l => l.replace(/\s+#.*$/, '').replace(/^\s*#.*$/, '');   // 上屏只放代码，不放注释（注释里有内部备注）
+const findLine = (src, pre) => { const L = src.split('\n'); const i = L.findIndex(l => l.startsWith(pre)); return [i, L[i] || pre]; };
+function portal(t, t0, cx, cy) {   // 屏幕中间的洞：第二章开头角色从这里冒出来，然后合上
+  const u = clamp((t - t0) / 1.6); if (u >= 1) return '';
+  const r = 260 * (1 - Math.pow(u, 2));
+  return `<div style="position:absolute;left:${cx - r}px;top:${cy - r}px;width:${2 * r}px;height:${2 * r}px;border-radius:50%;background:radial-gradient(#000 60%,#0b0c10 75%,rgba(159,212,255,.9) 78%,rgba(0,0,0,0) 82%)"></div>`;
+}
+
+// ---------- 第 1 步：时间表。4 行 = 4 个格子（节拍、步骤、动作、镜头），代码是截图时读入的真实 timeline.py ----------
+const TLROWS = [['节拍', 'BPM, FPS'], ['步骤', 'STEPS = ['], ['动作', 'ACT = {'], ['镜头', 'CAM1 = [']];
+P.tl = { w: 1600, h: 1000, render(t) {
+  const C = window.TL.CH2, src = window.SRC['timeline.py'], L = src.split('\n');
+  let h = `<div class="hd"><span class="dot" style="background:var(--cl)"></span>timeline.py<small>唯一时间表 · 全片都读它</small></div>`;
+  h += `<pre class="mono" style="position:absolute;left:60px;top:140px;margin:0;font-size:22px;line-height:1.5;color:#3a3d4c;white-space:pre">${esc(L.slice(0, 60).map(noCmt).filter(l => l.trim()).slice(0, 34).join('\n'))}</pre>`;
+  TLROWS.forEach(([tag, pre], i) => {
+    const [n, line] = findLine(src, pre), on = t >= C.lines[i];
+    h += cellBox('tl', 'L' + i, t, `<div style="display:flex;align-items:center;height:100%;padding:0 30px;gap:24px">
+      <span class="mono" style="font-size:26px;color:#6b6e7e;width:60px">${n + 1}</span>
+      <span class="mono" style="flex:1;font-size:32px;white-space:nowrap;overflow:hidden;color:${on ? '#fff' : '#9a9cab'}">${esc(noCmt(line).trim().slice(0, 52))}</span>
+      <span class="chip ${on ? 'cl' : ''}" style="font-size:30px;${on ? '' : 'background:#2a2c36;color:#6b6e7e'}">${tag}</span></div>`,
+      `background:${on ? '#2a1d18' : '#1d1e26'};border:3px solid ${on ? 'var(--cl)' : '#2a2c36'}`);
+  });
+  if (t >= C.steps[1][0] - window.TL.BAR) {   // 最后一小节：时间表 → 画面、配乐、字幕
+    const k = ease((t - C.steps[1][0] + window.TL.BAR) / .4);
+    h += `<div style="position:absolute;left:0;right:0;top:880px;text-align:center;font-size:40px;font-weight:700;opacity:${k}">
+      <span class="mono" style="color:#ff8a65">timeline.json</span> → 画面 · 配乐 · 字幕 · 镜头</div>`;
+  }
+  return h + portal(t, C.start - .1, 800, 500);
+}};
+
+// ---------- 第 2 步：网页逐帧截图。上面是正在截的界面，下面胶片 5 格 = 5 个格子，落一格截一帧 ----------
+const SHOTS = [['mac', 608], ['kb', 736], ['code', 946], ['review', 1249], ['queue', 1411]];
+P.shot = { w: 1600, h: 1000, render(t) {
+  const C = window.TL.CH2; let k = -1; C.shots.forEach((s, i) => { if (t >= s) k = i; });
+  const cur = SHOTS[Math.max(0, Math.min(4, k + (t >= C.shots[0] - .5 ? 0 : 0)))];
+  let h = `<div class="hd"><span class="dot" style="background:#2eb67d"></span>逐帧截图<small>界面是网页 · 无头浏览器一帧一张 PNG</small></div>`;
+  h += `<div style="position:absolute;left:320px;top:150px;width:960px;height:540px;border-radius:18px;overflow:hidden;background:#0d0e12;border:3px solid #333644">
+    <div style="height:44px;background:#24262f;display:flex;align-items:center;gap:10px;padding-left:18px">${['#ef4444', '#f59e0b', '#22c55e'].map(c => `<i style="width:16px;height:16px;border-radius:50%;background:${c}"></i>`).join('')}
+    <span class="mono" style="margin-left:20px;font-size:22px;color:#8b8d9c">screens.html?s=${cur[0]}</span></div>
+    <img src="../assets/ui/${cur[0]}.jpg" style="width:100%;height:496px;object-fit:cover;object-position:50% 0"></div>`;
+  const fl = k >= 0 ? clamp(1 - (t - C.shots[k]) / .25) : 0;   // 截图那一下闪白
+  if (fl > 0) h += `<div style="position:absolute;left:320px;top:150px;width:960px;height:540px;border-radius:18px;background:#fff;opacity:${fl * .8}"></div>`;
+  h += `<div style="position:absolute;left:40px;right:40px;top:665px;height:250px;background:#0b0b0f;border-radius:16px"></div>`;
+  SHOTS.forEach(([pg, f], i) => {
+    const on = t >= C.shots[i];
+    h += cellBox('shot', 'f' + i, t, on ? `<img src="../assets/ui/${pg}.jpg" style="width:100%;height:100%;object-fit:cover;border-radius:12px">
+      <span class="mono" style="position:absolute;left:10px;bottom:8px;font-size:22px;background:rgba(0,0,0,.7);padding:2px 8px;border-radius:6px">${String(f).padStart(4, '0')}.png</span>` : '',
+      `background:${on ? '#000' : '#16171d'};border:3px ${on ? 'solid #2eb67d' : 'dashed #3a3d4c'}`, '#2eb67d');
+  });
+  return h;
+}};
+
+// ---------- 第 3 步：Blender 后台渲染。6 格缩略图 = 6 个格子；下面是真实命令和帧计数 ----------
+P.render = { w: 1600, h: 1000, render(t) {
+  const C = window.TL.CH2, T = window.TL, a = C.steps[2][0], b = C.steps[3][0], NF = T.ALL_FRAMES;
+  const n = Math.round(NF * clamp((t - a) / (b - a - .3)));
+  const rev = [a + T.BEAT * 2, a + T.BEAT * 4, a + T.BEAT * 6, a + T.BEAT * 7, a + T.BEAT * 7.5, a + T.BEAT * 8];
+  let h = `<div class="hd"><span class="dot" style="background:#f59e0b"></span>Blender 后台渲染<small>Cycles · GPU · 没有界面，全靠脚本</small></div>`;
+  for (let i = 0; i < 6; i++) {
+    const on = t >= rev[i], k = pop((t - rev[i]) / .3);
+    h += cellBox('render', 'g' + i, t, on ? `<img src="../assets/thumbs/g${i}.jpg" style="width:100%;height:100%;object-fit:cover;border-radius:16px;transform:scale(${k})">` :
+      `<div style="height:100%;display:flex;align-items:center;justify-content:center;font-size:30px;color:#4a4d5c" class="mono">渲染中…</div>`,
+      `background:#101116;border:3px solid ${on ? '#f59e0b' : '#2a2c36'};overflow:hidden`, '#f59e0b');
+  }
+  h += `<div class="mono" style="position:absolute;left:280px;right:280px;top:820px;height:140px;border-radius:16px;background:#0b0b0f;padding:20px 28px;font-size:26px;line-height:1.6;color:#9a9cab">
+    <div>$ blender -b -P scene.py -- tex render ${n > 0 ? 1 : 0} ${NF}</div>
+    <div style="color:#fff">Fra:${String(n).padStart(4, '0')} / ${NF} <span style="display:inline-block;vertical-align:middle;width:300px;height:14px;border-radius:7px;background:#2a2c36;margin-left:16px"><span style="display:block;height:100%;width:${100 * n / NF}%;border-radius:7px;background:#f59e0b"></span></span></div></div>`;
+  return h;
+}};
+
+// ---------- 第 4 步：配乐。上面是真实 score.py，下面 8 个音符格子，角色落一格响一个音 ----------
+const NOTES = ['F', 'G', 'A', 'C', 'D', 'F', 'G', 'A'];
+P.score = { w: 1600, h: 1000, render(t) {
+  const src = window.SRC['score.py'], [n0] = findLine(src, 'def bell'), L = src.split('\n');
+  let h = `<div class="hd"><span class="dot" style="background:#a78bfa"></span>score.py<small>配乐和音效 · numpy 一个采样一个采样算出来</small></div>`;
+  h += `<pre class="mono" style="position:absolute;left:60px;top:150px;right:60px;margin:0;font-size:26px;line-height:1.5;color:#b9bbc8;white-space:pre;overflow:hidden;height:420px">${esc(L.slice(n0, n0 + 11).map(noCmt).join('\n'))}</pre>`;
+  NOTES.forEach((nm, i) => {
+    let who = null, tl = -9; for (const [ti, c, k] of window.TL.LANDS) if (c === 'score:n' + i && t >= ti) { who = k; tl = ti; }
+    const col = { claude: 'var(--cl)', codex: '#e9e9ef', grok: '#9fd4ff' }[who] || '#3a3d4c', v = clamp(1 - (t - tl) / .6);
+    let wave = ''; if (who) { let d = 'M0 40'; for (let x = 0; x <= 140; x += 4) d += ` L${x} ${40 + 30 * Math.sin(x * (.18 + i * .03) + t * 12) * (0.3 + .7 * v)}`;
+      wave = `<svg width="140" height="80" style="position:absolute;left:10px;top:20px"><path d="${d}" stroke="${who === 'codex' ? '#111' : '#fff'}" stroke-width="4" fill="none"/></svg>`; }
+    h += cellBox('score', 'n' + i, t, `${wave}<div style="position:absolute;left:0;right:0;bottom:16px;text-align:center;font-size:40px;font-weight:800;color:${who === 'codex' ? '#111' : '#fff'}">${nm}</div>`,
+      `background:${who ? col : '#1d1e26'};border:3px solid ${col}`, '#a78bfa');
+  });
+  return h;
+}};
+
+const page = P[S];
+document.body.style.width = page.w + 'px'; document.body.style.height = page.h + 'px';
+R.style.cssText = `position:relative;width:${page.w}px;height:${page.h}px`;
+window.renderAt = t => { document.documentElement.style.setProperty('--cl', window.TL.CLAUDE_HEX); R.innerHTML = page.render(t, window.TL.CH1); };
+</script></body></html>

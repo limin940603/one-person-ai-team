@@ -1,0 +1,62 @@
+diff --git a/core/render/mux.sh b/core/render/mux.sh
+index 0858cdc..c2e2a49 100755
+--- a/core/render/mux.sh
++++ b/core/render/mux.sh
+@@ -12,6 +12,7 @@
+ #   `ffmpeg … -f wav -` 流式写出的 WAV 头里长度是占位值，解码完整，只是结尾会有三句解封装提示：那是好文件，照常出片（带一句说明）。
+ #   看不出来的一种：流式 WAV 恰好截断在采样边界上（头里没有长度可比，解码也没有错）。
+ # 音频比画面短：用静音补到画面长度（不会把视频截短）；音频更长：照旧截到画面长度（-shortest）。
++# 画质：LEMO_CRF 改成片 crf（默认 19；细线、扫描线多的片子用 16，平台二次压缩后少糊一点）。
+ # 色彩：默认与以往完全一致（保持 video.mjs 出的 yuvj420p 全范围 / bt470bg 标签）；LEMO_COLOR=bt709 改成标准 yuv420p 限幅 / bt709（画面色值差 ±3 以内，但会与旧片有细微色差）。
+ die() { echo "mux.sh: $*" >&2; exit 1; }
+ V="$1"; A="$2"; O="$3"; FPS="${4:-24}"; GR="${5:-2}"
+@@ -20,6 +21,7 @@ V="$1"; A="$2"; O="$3"; FPS="${4:-24}"; GR="${5:-2}"
+ [ -f "$A" ] || die "audio not found: $A"
+ case "$FPS" in ''|*[!0-9.]*) die "fps must be a number, got '$FPS'";; esac
+ case "$GR" in ''|*[!0-9.]*) die "grain must be a number (0 = none), got '$GR'";; esac
++case "${LEMO_CRF:-19}" in ''|*[!0-9]*) die "LEMO_CRF must be an integer, got '$LEMO_CRF'";; esac
+ case "${LEMO_COLOR:-}" in ''|bt709) ;; *) die "LEMO_COLOR must be bt709 or unset, got '$LEMO_COLOR'";; esac
+ 
+ # 检查 WAV 头声明的音频长度有没有超出文件（截断在采样边界上的 WAV，ffmpeg 自己不会报任何错）。按字节逐个读长度，不依赖机器的字节序
+@@ -86,7 +88,7 @@ fi
+ # shellcheck disable=SC2086  (CARGS 要按空格拆成多个参数；默认为空)
+ ffmpeg -y -loglevel error -i "$V" -i "$A" \
+   -filter_complex "[0:v]$VF[v];[1:a]$LN,aresample=48000$PAD[a]" \
+-  -map "[v]" -map "[a]" -c:v libx264 -preset slow -crf 19 -r "$FPS" $CARGS -c:a aac -b:a 256k -movflags +faststart -shortest "$O" \
++  -map "[v]" -map "[a]" -c:v libx264 -preset slow -crf "${LEMO_CRF:-19}" -r "$FPS" $CARGS -c:a aac -b:a 256k -movflags +faststart -shortest "$O" \
+   || { rm -f "$O"; die "ffmpeg failed while writing '$O' (its message is above)"; }
+ [ -s "$O" ] || { rm -f "$O"; die "no output was written to '$O'"; }
+ echo "$O"
+diff --git a/core/render/video.mjs b/core/render/video.mjs
+index ccf4fde..8769d7a 100644
+--- a/core/render/video.mjs
++++ b/core/render/video.mjs
+@@ -8,6 +8,8 @@ import fs from 'fs'; import path from 'path'; import { spawn, execFileSync } fro
+ import { openDemo, closeServer, requireDemo, takeSize } from './page.mjs';
+ const args = process.argv.slice(2), { w: W, h: H } = takeSize(args), opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
+ const dir = args[0]; requireDemo(dir);
++// LEMO_LOSSLESS=1：PNG 截图 + 无损中间片段，画质只在成片那一次压缩里损失（细线、文字多的片子用；慢一些、中间文件大）
++const LOSSLESS = process.env.LEMO_LOSSLESS === '1';
+ const FPS = +opt('--fps', 24), WK = +opt('--workers', 3), Q = opt('--q', '');
+ if (!(FPS > 0) || !Number.isInteger(WK) || WK < 1) { console.error('bad --fps / --workers: fps must be > 0, workers an integer ≥ 1'); process.exit(2); }
+ const out = path.resolve(opt('--out', path.join(dir, 'out', 'video.mp4')));
+@@ -45,8 +47,8 @@ try { await Promise.all([...Array(WK)].map(async (_, w) => {
+   const a = w * per, b = Math.min(TOTAL, a + per); if (a >= b) return;
+   const { browser, page } = await openDemo(dir, { w: W, h: H, q: Q });
+   // cwd 设在分段目录、用相对文件名：路径里有 # ? 之类的字符时 ffmpeg 才不会把它当协议语法
+-  const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'mjpeg', '-i', '-',
+-    '-c:v', 'libx264', '-preset', 'medium', '-crf', '14', '-pix_fmt', 'yuv420p', `seg_${w}.mp4`], { cwd: segDir, stdio: ['pipe', 'inherit', 'inherit'] });
++  const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', LOSSLESS ? 'png' : 'mjpeg', '-i', '-',
++    '-c:v', 'libx264', ...(LOSSLESS ? ['-preset', 'veryfast', '-qp', '0'] : ['-preset', 'medium', '-crf', '14']), '-pix_fmt', 'yuv420p', `seg_${w}.mp4`], { cwd: segDir, stdio: ['pipe', 'inherit', 'inherit'] });
+   procs.add(ff); ff.on('close', () => procs.delete(ff));
+   let dead = null;   // ffmpeg 提前退出（缺编码器、磁盘满…）：它自己的报错已打到 stderr，这里只记一笔并停止喂帧
+   let done; const closed = new Promise(r => { done = r; }); ff.on('close', code => done(code));
+@@ -54,7 +56,7 @@ try { await Promise.all([...Array(WK)].map(async (_, w) => {
+   ff.stdin.on('error', () => { dead ??= 'ffmpeg closed its input early'; });
+   for (let f = a; f < b && !dead; f++) {
+     await page.evaluate(t => window.render(t), f / FPS);
+-    const buf = await page.screenshot({ type: 'jpeg', quality: 95 });
++    const buf = await page.screenshot(LOSSLESS ? { type: 'png' } : { type: 'jpeg', quality: 95 });
+     if (dead) break;
+     if (!ff.stdin.write(buf)) await Promise.race([new Promise(r => ff.stdin.once('drain', r)), closed]);
+     if ((f - a) % 60 === 0) console.log(`w${w} ${f - a}/${b - a}  ${((Date.now() - t0) / 1000).toFixed(0)}s`);

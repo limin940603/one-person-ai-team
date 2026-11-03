@@ -1,0 +1,64 @@
+<!doctype html>
+<!-- 平板上的聊天界面（横版 1600×1000），贴到 3D 屏幕上当贴图。renderAt(t) 画出 t 秒时的样子，由 shoot.mjs 逐帧截图。
+     三个角色的"贴纸"位置故意留空：那里放的是压扁的 3D 角色（scene.py），揭起后这里显示虚线空位和波纹。
+     贴纸中心像素 = timeline.py 的 STICK_PX（scene.py 按同一份换算到 3D）。 -->
+<html><head><meta charset="utf-8">
+<style>
+  html,body{margin:0;width:1600px;height:1000px;overflow:hidden;background:#15161c;
+    font-family:"PingFang SC","Noto Sans SC",sans-serif;color:#e9e9ef}
+  #hd{position:absolute;left:0;top:0;width:1600px;height:110px;background:#1c1d25;border-bottom:2px solid #2a2b35;
+    display:flex;align-items:center;justify-content:center;gap:24px}
+  #hd b{font-size:44px;font-weight:600}
+  #hd span{font-size:28px;color:#8b8d9c}
+  .me{position:absolute;right:70px;top:150px;padding:26px 40px;border-radius:44px 44px 12px 44px;
+    background:#3b6cf6;font-size:44px;line-height:1.35;color:#fff;transform-origin:100% 100%}
+  .row{position:absolute;left:60px;height:170px;width:1480px}
+  .slot{position:absolute;left:0;top:0;width:170px;height:170px;border-radius:30px;box-sizing:border-box;
+    border:5px dashed #474a5a;opacity:0}
+  .bub{position:absolute;left:210px;top:28px;padding:24px 36px;border-radius:12px 40px 40px 40px;background:#262833;
+    font-size:42px;line-height:1.3;transform-origin:0 0;white-space:nowrap}
+  .bub i{display:inline-block;font-style:normal;font-size:28px;color:#8b8d9c;margin-right:18px}
+  .ring{position:absolute;border-radius:50%;border:6px solid #9fd4ff;pointer-events:none}
+  #in{position:absolute;left:40px;right:40px;bottom:36px;height:96px;border-radius:48px;background:#22242e;
+    font-size:36px;color:#5d6070;display:flex;align-items:center;padding-left:50px}
+</style></head><body>
+<div id="hd"><b>我的 AI 团队（3）</b><span>Claude · Codex · Grok</span></div>
+<div class="me" id="me">我一个人，能开一家 AI 工作室吗？</div>
+<div id="rows"></div>
+<div id="in">发消息…</div>
+<script>
+const ROWS = [
+  {k:'claude', who:'Claude', txt:'能。我来统筹，写稿、改代码。'},
+  {k:'codex',  who:'Codex',  txt:'我做交叉审查，顺手出图。'},
+  {k:'grok',   who:'Grok',   txt:'几万篇资料，我批量读。'},
+];
+const rows = document.getElementById('rows');
+for (const r of ROWS) {
+  const d = document.createElement('div'); d.className = 'row'; d.id = 'r_' + r.k;
+  d.innerHTML = `<div class="slot"></div><div class="bub"><i>${r.who}</i>${r.txt}</div>`;
+  rows.appendChild(d);
+}
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const pop = u => { u = clamp(u); return u >= 1 ? 1 : 1 - Math.pow(1 - u, 3) * Math.cos(u * 7.5); };
+
+window.renderAt = (t) => {
+  const O = window.TL.OPEN, SP = window.TL.STICK_PX;
+  document.getElementById('me').style.transform = `scale(${pop((t + .25) / .35)})`;
+  document.querySelectorAll('.ring').forEach(e => e.remove());
+  for (const r of ROWS) {
+    const [cx, cy] = SP[r.k], row = document.getElementById('r_' + r.k), ev = O[r.k];
+    row.style.top = (cy - 85) + 'px';
+    row.querySelector('.bub').style.transform = `scale(${pop((t - O.reply[r.k]) / .3)})`;
+    row.querySelector('.slot').style.opacity = clamp((t - ev.stand) / .3) * .9;   // 角色揭起后留下虚线空位
+    for (const lag of [0, .12]) {                                                  // 跳出屏幕时荡开两圈波纹
+      const u = (t - ev.jump - lag) / .9;
+      if (u <= 0 || u >= 1) continue;
+      const R = 40 + 520 * (1 - Math.pow(1 - u, 2.2)), c = document.createElement('div');
+      c.className = 'ring';
+      Object.assign(c.style, {left: (cx - R) + 'px', top: (cy - R) + 'px', width: 2 * R + 'px', height: 2 * R + 'px',
+        opacity: (1 - u) * .9, borderWidth: (8 * (1 - u) + 1) + 'px'});
+      document.body.appendChild(c);
+    }
+  }
+};
+</script></body></html>

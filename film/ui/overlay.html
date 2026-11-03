@@ -1,0 +1,102 @@
+<!doctype html>
+<!-- 叠在 3D 画面上的字幕层（透明底，横版 1920×1080）。标题、步骤名在左上；字幕在下方居中；数据卡在右上。 -->
+<html><head><meta charset="utf-8">
+<style>
+  html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent;
+    font-family:"PingFang SC","Noto Sans SC",sans-serif;color:#fff}
+  .blk{position:absolute;left:110px;opacity:0}
+  #hook{top:96px}
+  #hook .a{font-size:48px;font-weight:600;color:#ffd9c9;letter-spacing:2px}
+  #hook .b{font-size:96px;font-weight:800;line-height:1.12;margin-top:8px;text-shadow:0 6px 30px rgba(0,0,0,.6)}
+  #title{top:90px}
+  #title .b{font-size:116px;font-weight:800;line-height:1.08;text-shadow:0 6px 30px rgba(0,0,0,.6)}
+  #title .b em{font-style:normal;color:#ff8a65}
+  #roles{top:400px;font-size:40px;line-height:1.8;font-weight:500;text-shadow:0 3px 14px rgba(0,0,0,.7)}
+  #roles span{display:inline-block;padding:0 18px;border-radius:12px;margin-right:14px;font-weight:700}
+  #chap,#step{top:96px}
+  #chap .n,#step .n{display:inline-block;font-size:40px;font-weight:700;padding:6px 24px;border-radius:40px;background:#ff8a65;color:#1a1010}
+  #chap .b,#step .b{font-size:92px;font-weight:800;line-height:1.12;margin-top:18px;text-shadow:0 6px 30px rgba(0,0,0,.6)}
+  #prog{top:56px;font-size:30px;font-weight:600;text-shadow:0 2px 12px rgba(0,0,0,.8)}
+  #prog .bar{display:flex;gap:8px;margin-top:12px}
+  #prog .bar i{display:block;width:90px;height:7px;border-radius:4px;background:rgba(255,255,255,.28)}
+  #prog .bar i.on{background:#ff8a65}
+  #cap{left:0;width:1920px;top:930px;text-align:center;font-size:48px;font-weight:700}
+  #cap span{display:inline-block;padding:12px 34px;border-radius:18px;background:rgba(10,10,16,.72)}
+  #chap2{top:96px}
+  #chap2 .n{display:inline-block;font-size:40px;font-weight:700;padding:6px 24px;border-radius:40px;background:#ff8a65;color:#1a1010}
+  #chap2 .b{font-size:92px;font-weight:800;line-height:1.12;margin-top:18px;text-shadow:0 6px 30px rgba(0,0,0,.6)}
+  #flash{position:absolute;inset:0;background:#fff;opacity:0}
+  #endscrim{position:absolute;inset:0;opacity:0;background:radial-gradient(ellipse at 50% 45%,rgba(8,8,14,.88),rgba(8,8,14,.6) 60%,rgba(8,8,14,.35))}
+  #end{left:0;width:1920px;top:250px;text-align:center}
+  #end .a{font-size:52px;font-weight:600;color:#ffd9c9}
+  #end .b{font-size:120px;font-weight:800;margin-top:20px;text-shadow:0 6px 30px rgba(0,0,0,.6)}
+  #end .b em{font-style:normal;color:#ff8a65}
+  #end .c{font-size:48px;margin-top:26px;color:#e9e9ef}
+  #sign{left:0;width:1920px;top:840px;text-align:center;font-size:44px;font-weight:700;letter-spacing:8px;color:#fff}
+  #card{left:auto;right:110px;top:96px;padding:30px 40px;border-radius:30px;background:rgba(10,10,16,.78);max-width:640px}
+  #card .big{font-size:104px;font-weight:800;color:#ff8a65;line-height:1}
+  #card .sm{font-size:34px;line-height:1.5;margin-top:16px;white-space:pre-line}
+</style></head><body>
+<div id="scrim" style="position:absolute;left:0;top:0;width:1300px;height:620px;opacity:0;background:radial-gradient(ellipse at 0 0,rgba(8,8,14,.85),rgba(8,8,14,.55) 45%,rgba(8,8,14,0) 72%)"></div>
+<div class="blk" id="hook"><div class="a">一个人，三个 AI</div><div class="b">开了一家<br>AI 工作室</div></div>
+<div class="blk" id="title"><div class="b">一个人的<br><em>AI 团队</em></div></div>
+<div class="blk" id="roles">
+  <div><span class="clchip">Claude</span>统筹 · 写稿 · 改代码</div>
+  <div><span style="background:#e9e9ef;color:#111">Codex</span>交叉审查 · 出图</div>
+  <div><span style="background:#111;color:#fff;border:2px solid #fff">Grok</span>批量读资料</div>
+</div>
+<div class="blk" id="chap"><div class="n">第一章</div><div class="b">这个工作室怎么转</div></div>
+<div class="blk" id="chap2"><div class="n">第二章</div><div class="b">这条片子怎么做的</div></div>
+<div id="endscrim"></div>
+<div class="blk" id="end"><div class="a">想照着做一条？</div><div class="b">评论区留言「<em>提示词</em>」</div><div class="c">把这条片子的完整提示词 .md 发你</div></div>
+<div class="blk" id="sign">克劳德队长</div>
+<div id="flash"></div>
+<div class="blk" id="step"><div class="n"></div><div class="b"></div></div>
+<div class="blk" id="prog"><div class="t"></div><div class="bar"></div></div>
+<div class="blk" id="cap"><span></span></div>
+<div class="blk" id="card"><div class="big"></div><div class="sm"></div></div>
+<script>
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ease = u => 1 - Math.pow(1 - clamp(u), 3);
+function show(id, t, t0, t1, slam) {   // 进场：上移 + 淡入（slam=true 时从放大砸下来）；出场：淡出
+  const e = document.getElementById(id), u = (t - t0) / .28, v = clamp((t1 - t) / .2);
+  if (t < t0 || t > t1) { e.style.opacity = 0; return; }
+  const k = ease(u);
+  e.style.opacity = Math.min(k, v);
+  e.style.transform = slam ? `scale(${1 + (1 - k) * .35})` : `translateY(${(1 - k) * 40}px)`;
+  e.style.transformOrigin = id === 'cap' ? '50% 50%' : '0 50%';
+}
+window.renderAt = t => {
+  const T = window.TL, O = T.OPEN, C = T.CH1, B = T.BEAT;
+  document.querySelector('.clchip').style.cssText = `background:${T.CLAUDE_HEX};color:#fff`;
+  show('hook', t, -.28, O.claude.land - .1, false);   // 第 0 帧就要有字：钩子不等动画
+  show('title', t, O.title, O.bigjump, true);
+  show('roles', t, O.roles, O.bigjump, false);
+  show('chap', t, O.chapter, C.steps[0][0], true);
+  const C2 = T.CH2;
+  show('chap2', t, C2.start + .15, C2.steps[0][0], true);
+  const ch = t >= C2.start ? C2 : C, nm = t >= C2.start ? '第二章' : '第一章';     // 当前章节：步骤名和进度条按章切换
+  let k = -1; ch.steps.forEach(([t0], i) => { if (t >= t0) k = i; });
+  const big = k >= 0 && t < ch.steps[k][0] + 2 * B && t < ch.end;
+  if (k >= 0 && t < ch.end) {
+    const st = document.getElementById('step');
+    st.querySelector('.n').textContent = `第 ${k + 1} 步`; st.querySelector('.b').textContent = ch.steps[k][1];
+    show('step', t, ch.steps[k][0], ch.steps[k][0] + 2 * B, true);
+    const pg = document.getElementById('prog');
+    pg.querySelector('.t').textContent = `${nm} · ${k + 1}/${ch.steps.length} ${ch.steps[k][1]}`;
+    pg.querySelector('.bar').innerHTML = ch.steps.map((_, i) => `<i class="${i <= k ? 'on' : ''}"></i>`).join('');
+    show('prog', t, ch.steps[k][0] + 2 * B, big ? -1 : ch.end - .2, false);
+  } else { show('step', t, 99, 99); show('prog', t, 99, 99); }
+  document.getElementById('flash').style.opacity = t >= C2.start ? clamp(1 - (t - C2.start) / .35) : ease((t - C2.start + .15) / .15);   // 扎进屏幕最后 0.15 秒先白起来，盖住穿过屏幕那一帧   // 第二章：白闪硬切
+  show('end', t, C2.endcard, T.DUR + 1, true); show('sign', t, C2.sign, T.DUR + 1, false);
+  document.getElementById('endscrim').style.opacity = ease((t - C2.endcard + .1) / .4);
+  const cap = T.CAPS.find(([a, b]) => t >= a && t < b);
+  if (cap) { document.querySelector('#cap span').textContent = cap[2]; show('cap', t, cap[0], cap[1], false); } else show('cap', t, 99, 99);
+  const cd = T.CARDS.find(([a, b]) => t >= a && t < b);
+  if (cd) { const e = document.getElementById('card'); e.querySelector('.big').textContent = cd[2]; e.querySelector('.sm').textContent = cd[3]; show('card', t, cd[0], cd[1], true); } else show('card', t, 99, 99);
+  // 大字下面垫暗底（钩子、标题、章节卡、步骤名），避开背后屏幕上的字
+  const sc = Math.max(t < O.claude.land ? 1 : 0, (t >= O.title && t < O.bigjump) ? 1 : 0,
+                      t >= O.chapter - .1 && t < C.steps[0][0] + .2 ? 1 : 0, t >= C2.start && t < C2.steps[0][0] + .2 ? 1 : 0, big ? ease((t - ch.steps[k][0] + .1) / .2) : 0);
+  document.getElementById('scrim').style.opacity = sc;
+};
+</script></body></html>
